@@ -40,6 +40,7 @@ if __name__ == '__main__':
     # is it possible to create matrix directly by using torch.randn((32, 3, 2)) ?
     
     # second layer
+    # You can see underfitting if you change 300 -> 100 parameters
     W1 = torch.randn((6, 300), requires_grad=True)
     b1= torch.randn((1, 300), requires_grad=True)
 
