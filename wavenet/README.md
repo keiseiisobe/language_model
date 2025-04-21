@@ -2,9 +2,11 @@
 
 an implementation of [WaveNet](https://arxiv.org/pdf/1609.03499) like neural network.
 
-![tree like structure](wavenet.png)
 
-## we can see an improvement of the parameters.
+* tree like structure
+![](wavenet.png)
+
+## we can see some improvement of the parameters.
 ![](Figure_1.png)
 
 ```bash
