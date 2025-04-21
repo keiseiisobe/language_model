@@ -1,3 +1,8 @@
+"""
+an implementation of WaveNet
+see https://arxiv.org/pdf/1609.03499
+"""
+
 import random
 import torch
 import torch.nn.functional as F
@@ -29,8 +34,12 @@ class BatchNorm:
         see Algorithm1 in https://arxiv.org/pdf/1502.03167
         """
         if self.training:
-            mean = x.mean(dim=0, keepdim=True)
-            var = x.var(dim=0, keepdim=True)
+            if x.dim() == 2:
+                dim = 0
+            else:
+                dim = (0, 1)
+            mean = x.mean(dim=dim, keepdim=True)
+            var = x.var(dim=dim, keepdim=True)
         else:
             mean = self.running_mean
             var = self.running_var
@@ -64,12 +73,16 @@ class Embedding:
     def parameters(self):
         return [self.w]
 
-class Flatten:
-    def __init__(self):
-        pass
+class FlattenConsecutive:
+    def __init__(self, n):
+        self.n = n
 
     def __call__(self, x):
-        return x.view(x.shape[0], -1)
+        B, T, C = x.shape
+        x = x.view(B, -1, C * self.n)
+        if x.shape[1] == 1:
+            x = x.squeeze(1)
+        return x
 
     def parameters(self):
         return []
@@ -94,7 +107,7 @@ if __name__ == "__main__":
     stoi["."] = 0
     itos = { i:s for s, i in stoi.items() }
 
-    n_blocks = 3
+    n_blocks = 8
     def build_dataset(lines):
         X, Y = [], []
         for line in lines:
@@ -117,11 +130,19 @@ if __name__ == "__main__":
 
     n_emb = 10
     n_sample = len(itos)
-    n_hidden = 200
+    n_hidden = 68
     model = Sequential([
         Embedding(n_sample, n_emb),
-        Flatten(),
-        Linear(n_blocks * n_emb, n_hidden, bias=False),
+        FlattenConsecutive(2),
+        Linear(2 * n_emb, n_hidden, bias=False),
+        BatchNorm(n_hidden),
+        Tanh(),
+        FlattenConsecutive(2),
+        Linear(2 * n_hidden, n_hidden, bias=False),
+        BatchNorm(n_hidden),
+        Tanh(),
+        FlattenConsecutive(2),
+        Linear(2 * n_hidden, n_hidden, bias=False),
         BatchNorm(n_hidden),
         Tanh(),
         Linear(n_hidden, n_sample)
