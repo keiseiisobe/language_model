@@ -5,12 +5,13 @@ import torch.nn.functional as F
 import requests
 
 class FeedForward(nn.Module):
-    def __init__(self, emb_dim):
+    def __init__(self, emb_dim, dropout):
         super().__init__()
         self.feedforward = nn.Sequential(
             nn.Linear(emb_dim, emb_dim),
             nn.ReLU(),
             nn.Linear(emb_dim, emb_dim),
+            nn.Dropout(dropout)
         )
 
     def forward(self, x):
@@ -22,13 +23,14 @@ class Head(nn.Module):
     Scaled Dot-Product Attention
     see https://arxiv.org/pdf/1706.03762
     """
-    def __init__(self, head_size, emb_dim, n_blocks):
+    def __init__(self, head_size, emb_dim, n_blocks, dropout):
         super().__init__()
         self.head_size = head_size
         self.key = nn.Linear(emb_dim, self.head_size)
         self.query = nn.Linear(emb_dim, self.head_size)
         self.value = nn.Linear(emb_dim, self.head_size)
         self.register_buffer("tril", torch.tril(torch.ones(n_blocks, n_blocks)))
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         """
@@ -40,27 +42,29 @@ class Head(nn.Module):
         w = query @ key.transpose(-2, -1) * self.head_size**-0.5 # (Batch, Time, Time)
         w = w.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
         w = F.softmax(w, dim=1) # (Batch, Time, Time)
+        w = self.dropout(w)
         value = self.value(x) # (Batch, Time, head_size)
         attention = w @ value # (Batch, Time, head_size)
         return attention
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, n_heads, head_size, emb_dim, n_blocks):
+    def __init__(self, n_heads, head_size, emb_dim, n_blocks, dropout):
         super().__init__()
-        self.heads = nn.ModuleList([Head(head_size, emb_dim, n_blocks) for _ in range(n_heads)])
+        self.heads = nn.ModuleList([Head(head_size, emb_dim, n_blocks, dropout) for _ in range(n_heads)])
         self.proj = nn.Linear(emb_dim, emb_dim)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         out = torch.cat([head(x) for head in self.heads], dim=-1)
-        return self.proj(out)
+        return self.dropout(self.proj(out))
 
 
 class Block(nn.Module):
-    def __init__(self, n_heads, emb_dim, n_blocks):
+    def __init__(self, n_heads, emb_dim, n_blocks, dropout):
         super().__init__()
-        self.multi_head_attention = MultiHeadAttention(n_heads, emb_dim//n_heads, emb_dim, n_blocks)
-        self.feedforward = FeedForward(emb_dim)
+        self.multi_head_attention = MultiHeadAttention(n_heads, emb_dim//n_heads, emb_dim, n_blocks, dropout)
+        self.feedforward = FeedForward(emb_dim, dropout)
         self.ln1 = nn.LayerNorm(emb_dim)
         self.ln2 = nn.LayerNorm(emb_dim)
 
@@ -74,14 +78,18 @@ class Block(nn.Module):
         
     
 class BigramLanguageModel(nn.Module):
-    def __init__(self, vocab_size, emb_dim, n_blocks, n_heads):
+    def __init__(self, vocab_size, emb_dim, n_blocks, n_heads, dropout):
         super().__init__()
         self.token_embedding = nn.Embedding(vocab_size, emb_dim)
         self.position_embedding = nn.Embedding(n_blocks, emb_dim)
         self.blocks = nn.Sequential(
-            Block(n_heads, emb_dim, n_blocks),
-            Block(n_heads, emb_dim, n_blocks),
-            Block(n_heads, emb_dim, n_blocks)
+            Block(n_heads, emb_dim, n_blocks, dropout),
+            Block(n_heads, emb_dim, n_blocks, dropout),
+            Block(n_heads, emb_dim, n_blocks, dropout),
+            Block(n_heads, emb_dim, n_blocks, dropout),
+            Block(n_heads, emb_dim, n_blocks, dropout),
+            Block(n_heads, emb_dim, n_blocks, dropout),
+            nn.LayerNorm(emb_dim)
         )
         self.linear = nn.Linear(emb_dim, vocab_size)
 
@@ -104,7 +112,7 @@ class BigramLanguageModel(nn.Module):
             loss = F.cross_entropy(logits, y)
         return logits, loss
 
-    def generate(self, x, iteration):
+    def generate(self, x, iteration, n_blocks):
         for _ in range(iteration):
             sub_x = x[:, -n_blocks:]
             logits, loss = self(sub_x)
@@ -147,7 +155,7 @@ if __name__ == "__main__":
         return X, Y
 
     # hyperparameters
-    epochs = 5000
+    epochs = 500
     eval_interval = 500
     eval_iteration = 200
     batch_size = 64
@@ -155,6 +163,7 @@ if __name__ == "__main__":
     emb_dim = 36
     n_heads = 4
     learning_rate = 5e-4
+    dropout = 0.2
     # device = "cuda" if torch.cuda.is_available() else "cpu"
 
     @torch.no_grad()
@@ -172,7 +181,7 @@ if __name__ == "__main__":
         return out
             
     # training and validation
-    model = BigramLanguageModel(vocab_size, emb_dim, n_blocks, n_heads)
+    model = BigramLanguageModel(vocab_size, emb_dim, n_blocks, n_heads, dropout)
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
     for epoch in range(epochs):
@@ -186,5 +195,9 @@ if __name__ == "__main__":
             print(f"train loss: {estimated_loss['train']}, validation loss: {estimated_loss['val']}")
 
     # generate sample texts from trained distribution
-    generated_text = decoder(model.generate(torch.zeros((1, 1), dtype=torch.int32), 1000)[0].tolist())
-    print(''.join(generated_text))
+    # generated_text = decoder(model.generate(torch.zeros((1, 1), dtype=torch.int32), 1000, n_blocks)[0].tolist())
+    # print(''.join(generated_text))
+
+    torch.save(model.state_dict(), "model.pth")
+    print("Saved PyTorch Model State to model.pth")
+    
