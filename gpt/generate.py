@@ -1,12 +1,15 @@
+import sys
+sys.path.append('/home/kisobe/sgoinfre/pip')
+
 from os import path
 import torch
 import gpt
 
 if __name__ == "__main__":
     # hyperparameters
-    n_blocks = 50
-    emb_dim = 36
-    n_heads = 4
+    n_blocks = 256
+    emb_dim = 384
+    n_heads = 6
     dropout = 0.2
 
     # get data
@@ -22,6 +25,4 @@ if __name__ == "__main__":
 
     model = gpt.BigramLanguageModel(vocab_size, emb_dim, n_blocks, n_heads, dropout)
     model.load_state_dict(torch.load("model.pth", weights_only=True))
-    for _ in range(1000):
-        generated_text = decoder(model.generate(torch.zeros((1, 1), dtype=torch.int32), 1, n_blocks)[0].tolist())
-        print(generated_text[1], end='', flush=True)
+    model.generate(torch.zeros((1, 1), dtype=torch.int32), 1000, n_blocks, decoder)

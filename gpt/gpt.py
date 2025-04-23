@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/home/kisobe/sgoinfre/pip')
+
 from os import path
 import torch
 import torch.nn as nn
@@ -112,13 +115,14 @@ class BigramLanguageModel(nn.Module):
             loss = F.cross_entropy(logits, y)
         return logits, loss
 
-    def generate(self, x, iteration, n_blocks):
+    def generate(self, x, iteration, n_blocks, decoder):
         for _ in range(iteration):
             sub_x = x[:, -n_blocks:]
             logits, loss = self(sub_x)
             logits = logits[:, -1, :]
             probs = F.softmax(logits, dim=1)
             x_next = torch.multinomial(probs, 1)
+            print(decoder(x_next[0].tolist())[0], end='', flush=True)
             x = torch.cat((x, x_next), dim=1)
         return x
         
@@ -155,16 +159,16 @@ if __name__ == "__main__":
         return X, Y
 
     # hyperparameters
-    epochs = 500
-    eval_interval = 500
-    eval_iteration = 200
+    epochs = 1000
+    eval_interval = 100
+    eval_iteration = 1
     batch_size = 64
-    n_blocks = 50
-    emb_dim = 36
-    n_heads = 4
-    learning_rate = 5e-4
+    n_blocks = 256
+    emb_dim = 384
+    n_heads = 6
+    learning_rate = 3e-4
     dropout = 0.2
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
+    #device = "cuda" if torch.cuda.is_available() else "cpu"
 
     @torch.no_grad()
     def estimate_loss():
@@ -182,6 +186,8 @@ if __name__ == "__main__":
             
     # training and validation
     model = BigramLanguageModel(vocab_size, emb_dim, n_blocks, n_heads, dropout)
+    if path.exists("model.pth"):
+        model.load_state_dict(torch.load("model.pth", weights_only=True))
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
     for epoch in range(epochs):
