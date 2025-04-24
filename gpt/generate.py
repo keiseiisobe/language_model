@@ -25,4 +25,4 @@ if __name__ == "__main__":
 
     model = gpt.BigramLanguageModel(vocab_size, emb_dim, n_blocks, n_heads, dropout)
     model.load_state_dict(torch.load("model.pth", weights_only=True))
-    model.generate(torch.zeros((1, 1), dtype=torch.int32), 1000, n_blocks, decoder)
+    model.generate(torch.zeros((1, 1), dtype=torch.int32), 10000, n_blocks, decoder)

@@ -11,9 +11,9 @@ class FeedForward(nn.Module):
     def __init__(self, emb_dim, dropout):
         super().__init__()
         self.feedforward = nn.Sequential(
-            nn.Linear(emb_dim, emb_dim),
+            nn.Linear(emb_dim, 4 * emb_dim),
             nn.ReLU(),
-            nn.Linear(emb_dim, emb_dim),
+            nn.Linear(4 * emb_dim, emb_dim),
             nn.Dropout(dropout)
         )
 
@@ -28,10 +28,9 @@ class Head(nn.Module):
     """
     def __init__(self, head_size, emb_dim, n_blocks, dropout):
         super().__init__()
-        self.head_size = head_size
-        self.key = nn.Linear(emb_dim, self.head_size)
-        self.query = nn.Linear(emb_dim, self.head_size)
-        self.value = nn.Linear(emb_dim, self.head_size)
+        self.key = nn.Linear(emb_dim, head_size, bias=False)
+        self.query = nn.Linear(emb_dim, head_size, bias=False)
+        self.value = nn.Linear(emb_dim, head_size, bias=False)
         self.register_buffer("tril", torch.tril(torch.ones(n_blocks, n_blocks)))
         self.dropout = nn.Dropout(dropout)
 
@@ -42,9 +41,9 @@ class Head(nn.Module):
         B, T, C = x.shape
         key = self.key(x) # (Batch, Time, head_size)
         query = self.query(x) # (Batch, Time, head_size)
-        w = query @ key.transpose(-2, -1) * self.head_size**-0.5 # (Batch, Time, Time)
+        w = query @ key.transpose(-2, -1) * C**-0.5 # (Batch, Time, Time)
         w = w.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
-        w = F.softmax(w, dim=1) # (Batch, Time, Time)
+        w = F.softmax(w, dim=-1) # (Batch, Time, Time)
         w = self.dropout(w)
         value = self.value(x) # (Batch, Time, head_size)
         attention = w @ value # (Batch, Time, head_size)
@@ -161,7 +160,7 @@ if __name__ == "__main__":
     # hyperparameters
     epochs = 1000
     eval_interval = 100
-    eval_iteration = 1
+    eval_iteration = 100
     batch_size = 64
     n_blocks = 256
     emb_dim = 384
